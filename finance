@@ -1,4 +1,4 @@
-          import csv
+import csv
 import os
 import datetime
 import requests
@@ -406,8 +406,6 @@ def hpe(company,useearnings='Net Income USD Mil'):
             index += 1
     return pelist
 
-#######################################
-
 
 #---------------------------------------#
 #-----------random tools----------------#
@@ -420,10 +418,6 @@ def tofloat(variable):
     if variable[-1] != '':
         return float(variable[-1])*10**3
 
-#output the slope of the line of best fit for a series of data
-def regressit(company,category):
-    pass
-#####################update later
 
 #returns a list of year-over-year percentage increases
 #list index of zero indicates earlier data
@@ -437,9 +431,4 @@ def yoy(company,category='Revenue'):
         end.append(var)
         index += 1
     return end
-##    
-##def roundup(co):
-##    endlist = [pe(co),pocf(co),pfcf(co),workingcap(co,True),quickrat(co,True),currentrat(co,True),opmarg(co),grossmarg(co),grahamcurrents(co,True)]
-##    print 'pe, pocf, pfcf, working capital, quick ratio, current ratio, operating and gross margins, liquidation value of current assets'
-##    for i in endlist: print i
-## 
+
