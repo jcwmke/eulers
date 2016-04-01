@@ -1,0 +1,445 @@
+          import csv
+import os
+import datetime
+import requests
+import codecs
+
+types = ['income statement','balance sheet','cash flow']
+
+#############################
+#     TABLE OF CONTENTS
+#############################
+#
+#1.  data retrieval and reading
+#       collate balance sheet, income statement, and cash flow statements into one large dict file
+#       retrieve current market cap
+#       retrieve current share price
+#       download share price history (csv)
+#       download current options prices (csv)
+#       write a file of current s&p 500 members (csv, using cboe list)
+#       get key ratios
+#
+#2.  common financial statistics
+#       price/earnings
+#       price/free cash flow
+#       price/operating cash flow
+#       liquidation value of current assets
+#       gross margins       
+#       operating margins
+#       working capital       
+#       debt-to-equity
+#       enterprise value
+#       quick ratio
+#       current ratio
+#       historical pe (last 5 years)
+#       historical pe (10 years)
+#       
+#3.  tools
+#       given a list, returns float() of most recent value, exponentiated to dollar value
+#       given a list, returns the line of best fit
+#       given a list, returns a list of year-over-year percentage changes
+#       summary
+
+
+#-----------------------------------------------------#
+#-------------data retrieval and reading--------------#
+#-----------------------------------------------------#
+
+#process three financial statement csvs into a giant dict file
+#dict formatted according to {'category':[year1data, year2data...yearxdata]}
+def getdata(company):
+    masterlist = {}
+    types = ['income statement','balance sheet','cash flow']
+    for i in types:
+        with open('c:/python27/finance/1.31.16/' + company + ' ' + i + '.csv') as data:
+            obj = csv.reader(data,delimiter=',')
+            for line in obj:
+                nums = []
+                for item in line[1:]:
+                    try:nums.append(float(item))
+                    except:nums.append(item)
+                masterlist[line[0]] = nums
+    return masterlist
+
+#getdata but for key ratios statements
+def getkeys(company):
+    masterlist = {}
+    with open('c:/python27/keyratios/' + company + ' key ratios.csv') as data:
+        obj = csv.reader(data, delimiter=',')
+        for line in obj:
+            if len(line) > 0: #blank lines will return an error message!
+                nums = []
+                for item in line[1:]:
+                    try: nums.append(float(item.replace(',','')))
+                    except: nums.append(item)
+                masterlist[line[0]] = nums
+    return masterlist
+                
+
+#pull current market cap from yahoo finance
+def mcap(company):
+    getsource = requests.get('http://finance.yahoo.com/q?s=' + company).text.encode('utf-8').split('yfs_j10')[1]
+    temp = getsource[len(company)+3 : getsource.index('</span>')]
+    if 'B' in temp: return float(temp[:-1])*(10**6)
+    elif 'M' in temp: return float(temp[:-1])*(10**3)
+    else: return company,' generated an error. please check the source site.'
+
+#pull current share price from yahoo finance
+def shareprice(company):
+    getsource = requests.get('http://finance.yahoo.com/q?s=' + company).text.encode('utf-8').split('yfs_l84')[1]
+    temp = getsource[len(company)+3 : getsource.index('</span>')]
+    return float(temp)
+
+#pull share price history from yahoo, save onto harddrive
+def pricehistory(company,path='c:/python27/pricehistories/'):
+    currtime = str(datetime.datetime.now()).split(' ')
+    currtime.pop()
+    getsource = requests.get('http://real-chart.finance.yahoo.com/table.csv?s=' + company + '&d=' + currtime[0][5:7] + '&e=' + currtime[0][8:10] + '&f=' + currtime[0][0:4] + '&g=d&a=5&b=5&c=1940&ignore=.csv').text.encode('utf-8')
+    with open(path+company+' price history.csv','wb') as output: output.write(getsource)
+
+#downloads options prices in csv and txt format
+def optionsprices(x):
+    print datetime.datetime.now().time()
+    finalfinal = []
+    gethtml = requests.get('http://finance.yahoo.com/q/op?s='+x).text #source
+#pull dates table from gethtmtl and make a dictionary (datescooked) of links (keys) and dates (values)
+    datesraw = gethtml[gethtml.index('<option data-selectbox-link'):gethtml.index('<div class="Grid-U options-menu-item symbol_lookup')].split('value')
+    datescooked = {}
+    for i in datesraw:
+        if 'ption data' not in i[2:12]:
+            datescooked[i[2:12]] = i[i.index(' >')+2:i.index('</option>')]
+#loop to pull source for every date in datescooked and write to file on hard drive 
+    for i in datescooked:
+        with open('c:/python27/options/'+x+' options, ' + str(datetime.datetime.now())[:10] + '.csv','ab') as csvfile:
+            writerapp = csv.writer(csvfile,delimiter=',')
+            ask = requests.get('http://finance.yahoo.com/q/op?s='+x+'&date='+i).text
+            finalfinal.append(x)
+            #writerapp.writerow([i+datescooked[i].replace(' ','')])
+            writerapp.writerow(['Option Number','Strike Date','Last','Bid','Ask','$ Change','% Change','Implied Volatility'])
+            opsraw = ask.split('strong data-sq=":value"')
+            del opsraw[0] #deletes nonessential source code
+            byday = [i, datescooked[i]]
+            for item in opsraw:
+                temp = [i,datescooked[i]]
+                tempprices = item.split('class="option_')
+                for j in tempprices:
+                    if 'option-change' in j:
+                        pass
+                    elif 'data-raw' in j:
+                        if 'strike' in j:
+                            strikeone = j[j.index('strike')+7:j.index('strike')+20].replace(',','')
+                            striketwo = float(strikeone[:strikeone.index('"')])
+                            temp.append(striketwo)
+                    elif 'Fz-m' in j:
+                        if 'href' in j:
+                            pass
+                        elif '%' not in j:
+                            temp.append(float(j[j.index('Fz-m')+7: j.index('</div')]))
+                        else:
+                            temp.append(j[j.index('Fz-m')+7: j.index('</div')])
+                    else:
+                        print '######',j
+                writerapp.writerow(temp)
+                byday.append(temp)
+            finalfinal.append(byday)
+    with open('c:/python27/options/'+x+' options, ' + str(datetime.datetime.now())[:10] + '.txt','wb') as end:
+        end.write(str(finalfinal))
+        print datetime.datetime.now().time(),'\n'
+
+        
+#write a list of the current s&p 500 constituency to a .csv file
+def writemembers(membersurl):
+    #get sourcecode as raw (and encoded) text
+    def getsource(url):
+        fetch = requests.get(url).text.encode('utf-8')
+        return fetch 
+
+    #trim unnecessary html text
+    def trim(sometext):
+        trimpiece = '<!--------------------------------------------->'
+        return sometext[sometext.index(trimpiece):]
+    
+    #trim source and split into iterable parts
+    mid = trim(getsource(membersurl)).split("'height:15.0pt'>")
+    new = [mid[1]]
+    
+    #'mid' is composed of half good entries and half garbage.
+    #this loop takes out the garbage
+    index = 2
+    while index < len(mid):
+        if index % 2 == 0: new.append(mid[index])
+        index += 1
+        
+    #this loop pulls the symbol and name from what is currently
+    #html markup salad and writes a fresh list of s&p members to our harddrive
+    #loop should generate one exception, a leading string w/ no pertinent data
+    with open('c:/python27/sp500, new.csv','wb') as endfile:
+        writerobj = csv.writer(endfile,delimiter=',')  
+        for i in new:
+            try:
+                j = i.split('align=right')
+                symb = j[0][j[0].index('class=xl158604')+ 15 : -28] #symbol
+                name = j[0][ : j[0].index('</td>')] #name
+                if '&amp;' in name: name = name.replace('&amp;','')
+                writerobj.writerow([symb,name])
+            except:
+                print 'error',i            
+
+#get key ratios from morningstar
+def keyr(company):
+    with open('c:/python27/keyratios/' + company + ' key ratios.csv','wb') as endfile:
+        otherurls = ['XNYS','XNAS','PINX','XFRA','XLON'] #listing of possible exchanges to test   
+        for exchange in otherurls:
+            fetch = requests.get('http://financials.morningstar.com/ajax/exportKR2CSV.html?&callback=?&t=' + exchange + ':' + company + '&region=usa&culture=en-US&cur=&order=asc').text.encode('utf-8')
+            if len(fetch) > 0:
+                endfile.write(fetch)
+                break
+
+#get annual financial statements for past 5 years (income, balance, cash)
+def getfin(company):
+    path = 'c:/python27/finance/1.31.16/'
+    statementlist = {'income statement':'is','balance sheet':'bs','cash flow':'cf'}
+    for statement in statementlist:
+        ask = requests.get('http://financials.morningstar.com/ajax/ReportProcess4CSV.html?&t=xnys:' + company + '&region=usa&culture=en-US&cur=&reportType=' + statementlist[statement] + '&period=12&dataType=A&order=asc&columnYear=5&curYearPart=1st5year&rounding=3&view=raw&r=37150&denominatorView=raw&number=3').text
+        if len(ask) == 0: ask = requests.get('http://financials.morningstar.com/ajax/ReportProcess4CSV.html?&t=xnas:' + company + '&region=usa&culture=en-US&cur=&reportType=' + statementlist[statement] + '&period=12&dataType=A&order=asc&columnYear=5&curYearPart=1st5year&rounding=3&view=raw&r=37150&denominatorView=raw&number=3').text
+        ask = ask.encode('utf-8')
+        with open(path + company + ' ' + statement + '.csv','wb') as output:
+            output.write(ask)
+
+
+#-----------------------------------------------#
+#-------------financial statistics--------------#
+#-----------------------------------------------#
+
+#return a company's pe ratio
+def pe(company):
+    netinc = tofloat(getdata(company)['Net income'])
+    return round(mcap(company) /  netinc, 2)
+
+#return a company's price-to-free-cash ratio
+def pfcf(company):
+    fcf = tofloat(getdata(company)['Free cash flow'])
+    return round(mcap(company) / fcf, 2)
+
+#return a company's current price-to-operating-cash-flow ratio
+def pocf(company):
+    ocf = tofloat(getdata(company)['Operating cash flow'])
+    return round(mcap(company) / ocf, 2)
+
+#ballparks the liquidation value of current assets
+#---please note:
+#percentage values for discounting the liquidation value of various current
+#asset types are here featured as optional arguments, enabling customization of
+#the function based on the research/opinions of the programmer regarding the
+#true value of those asset classes.
+#---please note, pt. II: ppe and nppe are two different ways that the rawa data refers to the same field.
+#---please note, pt. III: these values are slightly more conservative than those
+#---outlined by graham in 'security analysis'
+def grahamcurrents(company,rcv=.75, inv=.5, oca=.25, ppe=.15, nppe=.15):
+    temp = getdata(company)
+    if 'Receivables' in temp: receivables = tofloat(temp['Receivables'])
+    else: receivables = 0
+    if 'Inventories' in temp: inventories = tofloat(temp['Inventories'])
+    else: inventories = 0
+    if 'Other current assets' in temp: other = tofloat(temp['Other current assets'])
+    else: other = 0
+    cash = tofloat(temp['Total cash'])
+    if 'Net property' in temp: ppande = tofloat(temp['Net property, plant and equipment'])
+    elif 'and equipment, net' in temp: ppande = tofloat(temp['Property, plant and equipment, net'])
+    else: ppande = 0
+    graham = cash + receivables*rcv + inventories*inv + ppande*nppe
+    if other >= 0: graham += (other * oca)
+    return graham
+
+#returns gross margins in the last five periods
+def grossmarg(company):
+    temp = getdata(company)
+    revs = temp['Revenue']
+    gross = temp['Gross profit']
+    index = 0
+    end = []
+    while index < len(revs):
+        end.append(round(float(gross[index])/float(revs[index])*100,2))
+        index += 1
+    return end
+
+#returns operating margins in the last five years
+def opmarg(company):
+    temp = getdata(company)
+    revs = temp['Revenue']
+    opinc = temp['Operating income']
+    index = 0
+    end = []
+    while index < len(revs):
+        end.append(round(float(opinc[index])/float(revs[index])*100,2))
+        index += 1
+    return end
+
+#returns current working capital
+#most recent year or a list of the past five years
+def workingcap(company, allyrs=False):
+    temp = getdata(company)
+    currentA = temp['Total current assets']
+    currentL = temp['Total current liabilities']
+    if allyrs == False:
+        return currentA[-1] - currentL[-1]
+    else:
+        end = []
+        index = 0
+        while index < len(currentA):
+            end.append(currentA[index]-currentL[index])
+            index += 1
+        return end
+
+#returns debt-to-equity (d/e) ratio
+def de(company,allyrs=False):
+    temp = getdata(company)
+    totalliab = temp['Total liabilities']
+    totalassets = temp['Total assets']
+    if allyrs == False: return totalliab[-1] / (totalassets[-1] - totalliab[-1])
+    else:
+        end = []
+        index = 0
+        while index < len(totalliab):
+            end.append(round(totalliab[index] / (totalassets[index] - totalliab[index]),2))
+            index += 1
+        return end
+
+#returns current enterprise value of company
+#please note: determining which liabilities qualify for addition into the figure of 'enterprise
+#value' is a nuanced process. here, long-term debt is used as the default value of an optional argument
+#which may be changed by the user into the name of the line item field determined by the analyst to
+#best represent the true market value of corporate debt.
+def eva(company, debt='Long-term debt'):
+    temp = getdata(company)
+    if debt in temp: valueofdebt = temp[debt]
+    else: valueofdebt = [0]
+    if valueofdebt[-1] == '': evalue = mcap(company) - temp['Total cash'][-1]
+    else: evalue = mcap(company) + valueofdebt[-1] - temp['Total cash'][-1]
+    return evalue
+
+#returns quick ratio
+def quickrat(company,allyrs=False):
+    temp = getdata(company)
+    cash = temp['Total cash']
+    rcvbl = temp['Receivables']
+    liab = temp['Total current liabilities']
+    if allyrs == False: return (cash[-1] + rcvbl[-1]) / liab[-1]
+    else:
+        end = []
+        index = 0
+        while index < len(cash):
+            end.append(round((cash[index] + rcvbl[index])/liab[index],2))
+            index += 1
+        return end   
+    
+#returns current ratio
+def currentrat(company, allyrs=False):
+    temp = getdata(company)
+    currentassets = temp['Total current assets']
+    currentliab = temp['Total current liabilities']
+    if allyrs == False: return currentassets[-1] / currentliab[-1]
+    else:
+        end = []
+        index = 0
+        while index < len(currentassets):
+            end.append(round(currentassets[index] / currentliab[index],2))
+            index += 1
+        return end
+
+#returns pe ratio for last ten years (using an average of daily prices
+#occurring within the last three months of the company's annual report filing date.)
+#   so: for a company filing its annual report in july 2012,
+#   the annual Net Income / Shares Outstanding figures declared by the
+#   company in this report (represented as FY 2012-07) are used as EPS
+#   and an average of inflation-adjusted daily prices occurring from
+#   5/01/2012 - 7/31/2012 is used for Share Price
+#this function also can take alternate earnings fields as an optional argument
+#for example, hpe('xom','Free Cash Flow USD Mil') will return historical cash
+#flow-to-share-price ratios, hpe('xom','Revenue USD Mil') will return historical
+#price-to-sales, etc etc.
+def hpe(company,useearnings='Net Income USD Mil'):
+    pelist = []
+    keys = os.listdir('c:/python27/keyratios/')
+    prices = os.listdir('c:/python27/pricehistories/')
+    path = 'c:/python27/pricehistories/' + company + ' price history.csv'
+    
+    #pull key ratios if they're not on file
+    if company + ' key ratios.csv' not in keys: keyr(company)
+
+    #pull price histories if they're not on file
+    if company + ' price history.csv' not in prices: pricehistory(company)
+
+    #make key ratios object
+    temp = getkeys(company)
+    #make years object
+    years = getkeys(company)['']
+
+    with open(path) as shareprices:
+        readerobj = csv.reader(shareprices,delimiter=',')
+        readlist = []
+        index = 0
+        for line in readerobj: readlist.append(line)
+        while index < len(years) - 1:
+            priceavg = 0
+            nofprices = 0
+            netincome = float(temp[useearnings][index])
+            sharesout = float(temp['Shares Mil'][index])
+
+            #strings for testing equivalence of price date entries against items in [years] (in '2012-12' format')
+            #two strings takes us two months back.
+            #(not a loop because testing further back in time than three months exposes us to conflicting quarterly statements)
+            yearstring = years[index][:5]
+            monthago =  str(int(str(years[index])[-2:])-1)
+            twomonthago = str(int(monthago) - 1)
+
+            for item in readlist:
+                if years[index] in item[0] or yearstring+monthago in item[0] or yearstring + twomonthago in item[0]:
+                    #print item
+                    #print years[index],item
+                    nofprices += 1
+                    priceavg += float(item[-1])
+                    #print nofprices, float(priceavg/nofprices), item[-1], round(netincome/ sharesout, 2)
+
+            if nofprices > 0:
+                pelist.append([years[index],round(priceavg / nofprices / (netincome / sharesout),2)])
+            index += 1
+    return pelist
+
+#######################################
+
+
+#---------------------------------------#
+#-----------random tools----------------#
+#---------------------------------------#
+    
+#returns the dollar value, in float() format, of the last element of a list
+#(list is specified external to this function)
+#used to quicken the process of pulling most current element
+def tofloat(variable):
+    if variable[-1] != '':
+        return float(variable[-1])*10**3
+
+#output the slope of the line of best fit for a series of data
+def regressit(company,category):
+    pass
+#####################update later
+
+#returns a list of year-over-year percentage increases
+#list index of zero indicates earlier data
+def yoy(company,category='Revenue'):
+    temp = getdata(company)[category]
+    end = []
+    index = 0
+    while index < len(temp) - 1:
+        #returns the percentage increase of a year to its direct antecendent
+        var = round(float(temp[index+1]) / float(temp[index]) * 100 - 100, 2)
+        end.append(var)
+        index += 1
+    return end
+##    
+##def roundup(co):
+##    endlist = [pe(co),pocf(co),pfcf(co),workingcap(co,True),quickrat(co,True),currentrat(co,True),opmarg(co),grossmarg(co),grahamcurrents(co,True)]
+##    print 'pe, pocf, pfcf, working capital, quick ratio, current ratio, operating and gross margins, liquidation value of current assets'
+##    for i in endlist: print i
+## 
