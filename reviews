@@ -1,0 +1,40 @@
+#pull all reviews for any given product from amazon.com
+#using the starting url of the review archive, obtained manually
+#saving reviews to a csv file in 'rating, review date, review body format
+
+import requests, os, sys, csv, codecs, time
+
+def reviews(url):
+    address = url
+    productname = '' #input name #used in filename of resultant csv
+    page = 1 #start page
+    
+    #create a reference of failed pulls, to be iterated on later runs
+    deadpages = []
+    
+    with open('c:/python27/amazon/'+productname+ ' reviews.csv','ab') as finalcsv:
+        #create writer object
+        writer = csv.writer(finalcsv,delimiter=',')
+        
+        #start pulling
+        while page < 115: #end page
+            print page
+            get = requests.get(address+str(page)).text
+            gett = get.encode('utf-8')
+            #end pull if page number results in a dead link
+            if 'Sorry, no reviews match your current selections' in gett:
+                break
+            elif 'review-text' in gett:
+                x = gett.split('"a-section review"')[1:]
+                for i in x:
+                    singlereview = []
+                    singlereview.append(i[i.index('"a-icon-alt"') + 13 : i.index('"a-icon-alt"') + 30])
+                    tempdate = i[i.index('review-date')+16:i.index('review-date')+35] #make a snippet of the date string, append in next line
+                    singlereview.append(tempdate[:tempdate.index('<')])
+                    singlereview.append(i[i.index('review-text')+13:i.index('"a-row a-spacing-top-small review-comments"')-24].replace('<br />',''))
+                    writer.writerow(singlereview)
+            else:
+                print 'there was a problem with page ' + str(page) + '!'
+                deadpages.append(page)
+            page+=1
+    print deadpages
