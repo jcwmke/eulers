@@ -1,0 +1,95 @@
+#save assessment data from milwaukee assessor website onto hard drive in csv format
+#1 csv file per taxkey
+import requests,csv,codecs,os,sys
+
+#http://assessments.milwaukee.gov/addrlkp.asp?lo=2768&hi=2768&dir=n&street=bremen&ucookie=NO
+#this url is obtained via searching assessments.milwaukee.gov for address in 'XXXX N 70' format
+#as a string: 'NUMBER'+' '+'DIRECTION'+' '+'STREETNAME' (no 'st','ave',etc)
+
+
+
+#get url of property
+def geturl(numb,nsew,street):
+    try:
+        search = requests.get('http://assessments.milwaukee.gov/addrlkp.asp?lo='+numb+'&hi='+numb+'&dir='+nsew+'&street='+street+'&ucookie=NO').text
+        targeturl = 'http://assessments.milwaukee.gov/remast.asp?' + search[search.index('taxkey='):search.index('taxkey=')+17]
+        return targeturl
+    except: return False
+
+#pulls/returns data from main page, assessment page, and sale history page
+def maindata(url):
+    enddata = []
+    moreaddresses = [] #additional urls to be parsed. place for sales and assessment data
+    getmain = requests.get(url).text
+    clipurl = getmain[getmain.index('table'):].split('</td') #remove css from sourcecode
+    for i in clipurl:
+        if 'welling' in i:
+            snip = i[i.index('welling')-1 :]
+            temp = ['Property Description', snip[:snip.index('</th></tr>')]]
+            enddata.append(temp)
+        elif 'Deed Type' in i: pass
+        elif 'Ownership Information' in i:
+            snip = i[i.index('vfldl')+5 :]
+            temp = ['Ownership Information',snip.split('<BR>')]
+            enddata.append(temp)
+        elif 'vlabel' in i:
+            try:
+                temp = [i[i.index('vlabel')+7 : i.index('</th')], i[i.index('vfld')+6:]]
+                enddata.append(temp)
+            except: print i
+        elif 'hist.asp?' in i:
+            temp = i[i.index('href')+7 : i.index('taxkey')+17]
+            moreaddresses.append(url[:url.index('remast.')] + temp)            
+        elif 'Lot Size' in i:
+            temp = i.split(' ')
+            temp2 = ['Lot Length',temp[-3]]
+            temp3 = ['Lot Width',temp[-1][:-4]]
+            enddata.append(temp2)
+            enddata.append(temp3)            
+        else: pass
+    
+    #parse sales data page
+    sale = requests.get(moreaddresses[0]).text
+    saleclip = sale[sale.index('<table'):].split('class')
+    saledata = []
+    for i in saleclip:
+        vfldr = 0
+        if 'vfldr' in i or 'vfldc' in i:
+            saledata.append(i[7:i.index('</td>')])
+    print saledata
+    
+    # parse assessment data page
+    ass = requests.get(moreaddresses[1]).text
+    assclip = ass[ass.index('<table'):].split('class')
+    assdata = []
+    for i in assclip:
+        if 'vfldr' in i or 'vfldc' in i:
+            if len(i[7:i.index('</td>')])>1:
+                assdata.append(i[7:i.index('</td>')])
+    enddata.append(['Assessed Land Value',assdata[1]])
+    enddata.append(['Assessed Property Value',assdata[2]])
+    enddata.append(['Total Assessed Value',assdata[3]])
+
+    print enddata
+    print saledata
+    return enddata
+
+def writedata(data,address,direction,street):
+    with open('c:/python27/realestate/'+address+' '+direction+' '+street+'.csv','wb') as f:
+        writer = csv.writer(f,delimiter=',')
+        for item in data:
+            writer.writerow(item)
+        f.close()
+
+stop = False
+while stop == False:
+    addressnum = raw_input('please enter address number: ')
+    addressdir = raw_input('please enter NSEW street direction: ')
+    addressst = raw_input('please enter street name. do not include "st","ave",etc. ')
+    if addressnum == 'q' or addressdir == 'q' or addressst == 'q':
+        stop = True
+    x = geturl(addressnum,addressdir,addressst)
+    writedata(maindata(x), addressnum, addressdir, addressst)
+
+
+
